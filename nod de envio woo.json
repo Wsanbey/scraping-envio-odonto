@@ -1,0 +1,96 @@
+{
+    "nodes": [
+        {
+            "parameters": {
+                "operation": "update",
+                "productId": "653091",
+                "updateFields": {},
+                "dimensionsUi": {
+                    "dimensionsValues": {
+                        "height": "={{ String($json.altura || '') }}",
+                        "length": "={{ String($json.comprimento || '') }}",
+                        "width": "={{ String($json.largura || '') }}"
+                    }
+                },
+                "imagesUi": {
+                    "imagesValues": [
+                        {
+                            "src": "={{ String($json.imagem || 'https://lagoaseca.pb.gov.br/wp-content/uploads/2019/06/IMG-20190620-WA0046-1.jpg') }}"
+                        },
+                        {
+                            "src": "={{ String($json.imagem || 'https://storage.googleapis.com/catalogo-mais-odonto.appspot.com/photos/resize/adesivo-ambar-2ml-fgm-1716382386932-0_800x800.png') }}"
+                        },
+                        {
+                            "src": "={{ String($json.imagem || 'https://storage.googleapis.com/catalogo-mais-odonto.appspot.com/photos/resize/adesivo-ambar-2ml-fgm-1716382386932-0_800x800.png') }}"
+                        }
+                    ]
+                },
+                "metadataUi": {
+                    "metadataValues": [
+                        {
+                            "key": "ean",
+                            "value": "={{ String($json.ean || '') }}"
+                        },
+                        {
+                            "key": "marca",
+                            "value": "={{ String($json.marca || '') }}"
+                        },
+                        {
+                            "key": "fabricante",
+                            "value": "={{ String($json.fabricante?.descricao || '') }}"
+                        },
+                        {
+                            "key": "categoria_erp",
+                            "value": "={{ String($json.categoria?.descricao || '') }}"
+                        },
+                        {
+                            "key": "grupo",
+                            "value": "={{ String($json.grupo?.descricao || '') }}"
+                        },
+                        {
+                            "key": "subgrupo",
+                            "value": "={{ String($json.subGrupo?.descricao || '') }}"
+                        },
+                        {
+                            "key": "unidade",
+                            "value": "={{ String($json.unidade || '') }}"
+                        },
+                        {
+                            "key": "codigo_barras",
+                            "value": "={{ String($json.codigosBarras?.[0]?.codigoBarra || '') }}"
+                        },
+                        {
+                            "key": "data_inclusao",
+                            "value": "={{ String($json.dataInclusao || '') }}"
+                        },
+                        {
+                            "key": "ultima_alteracao",
+                            "value": "={{ String($json.dataUltimaAlteracao || '') }}"
+                        }
+                    ]
+                }
+            },
+            "type": "n8n-nodes-base.wooCommerce",
+            "typeVersion": 1,
+            "position": [
+                -544,
+                800
+            ],
+            "id": "d3dfebef-0142-40d0-b443-e89001bd0362",
+            "name": "Create Um Produto Variavel",
+            "credentials": {
+                "wooCommerceApi": {
+                    "id": "0RfvrNpViaw4vElN",
+                    "name": "WooCommerce api ERP Pablo Odeonto"
+                }
+            },
+            "onError": "continueErrorOutput"
+        }
+    ],
+    "connections": {},
+    "pinData": {},
+    "meta": {
+        "templateCredsSetupCompleted": true,
+        "instanceId": "2335fe5d1607348d52bcaa8692b1c9dce1756a0b4c721d4377850239333ab92f"
+    }
+}

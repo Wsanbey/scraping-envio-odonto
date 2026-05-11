@@ -1,0 +1,21 @@
+{
+  "name": "odonto_scrapin_v1_vero",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "scrap": "node src/scraper.js",
+    "importar": "node src/importar-urls.js",
+    "status": "node src/status-db.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.16.0",
+    "better-sqlite3": "^12.9.0",
+    "cheerio": "^1.2.0",
+    "dotenv": "^17.4.2",
+    "puppeteer": "^24.43.0"
+  }
+}

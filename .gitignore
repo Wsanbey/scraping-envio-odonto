@@ -1,0 +1,15 @@
+# Dependências
+node_modules/
+
+# Banco de dados SQLite (dados locais, não vai para o Git)
+scrapin.db
+
+# Variáveis de ambiente com credenciais sensíveis
+.env
+
+# Resultados temporários
+resultados.json
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
