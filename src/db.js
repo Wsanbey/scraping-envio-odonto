@@ -28,9 +28,17 @@ db.exec(`
     enviado_em      TEXT,
     woo_product_id  INTEGER,
     woo_url         TEXT,
-    erro_msg        TEXT
+    erro_msg        TEXT,
+    aviso_cro       TEXT
   );
 `);
+
+// Adiciona coluna se não existir (para bancos já criados)
+try {
+    db.exec(`ALTER TABLE urls ADD COLUMN aviso_cro TEXT;`);
+} catch (e) {
+    // Ignora erro se a coluna já existir
+}
 
 // ─────────────────────────────────────────────
 // Funções de acesso ao banco
@@ -74,17 +82,19 @@ function marcarScraping(id) {
  * @param {number} id
  * @param {number} wooProductId — ID retornado pela API do WooCommerce
  * @param {string} wooUrl — Link público do produto na loja
+ * @param {string} avisoCro — Texto do alerta CRO (se houver)
  */
-function marcarEnviado(id, wooProductId, wooUrl) {
+function marcarEnviado(id, wooProductId, wooUrl, avisoCro = null) {
     db.prepare(`
         UPDATE urls
         SET status = 'enviado',
             enviado_em = ?,
             woo_product_id = ?,
             woo_url = ?,
+            aviso_cro = ?,
             tentativas = tentativas + 1
         WHERE id = ?
-    `).run(new Date().toISOString(), wooProductId, wooUrl, id);
+    `).run(new Date().toISOString(), wooProductId, wooUrl, avisoCro, id);
 }
 
 /**

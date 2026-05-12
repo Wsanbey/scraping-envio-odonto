@@ -250,6 +250,8 @@ async function scrapePage(browser, url, produtoNumero) {
                 }
             }
 
+            const avisoCro = firstTextOf('div.alert-danger', 'div[role="alert"]');
+
             const categorias = [];
             const breadcrumbLinks = $$('nav[class*="Breadcrumb_breadcrumb"] ol.breadcrumb li.breadcrumb-item a');
             breadcrumbLinks.forEach((a) => {
@@ -268,6 +270,8 @@ async function scrapePage(browser, url, produtoNumero) {
                 produtoNumero: prodNum,
                 url: window.location.href,
                 nome: withFallback(nome, 'indisponivel'),
+                avisoCro: avisoCro,
+                categorias: categorias,
                 embalagem: withFallback(embalagem, 'indisponivel'),
                 codigo: withFallback(codigo, 'indisponivel'),
                 precoVista: withFallback(precoVista, 'indisponivel'),
@@ -327,6 +331,9 @@ function formatResults(result, wooResult = null) {
         output += `Status: ${result.status}\n`;
         output += `Imagens: ${result.imagens.length}\n`;
         output += `Categorias: ${result.categorias.join(' > ') || 'Nenhuma'}\n`;
+        if (result.avisoCro) {
+            output += `⚠️ ALERTA: ${result.avisoCro}\n`;
+        }
 
         if (result.tipo === 'composto' && result.variantes.length > 0) {
             output += '\n--- Variantes ---\n';
@@ -428,7 +435,7 @@ async function main() {
                 try {
                     const woo = await enviarProduto(dados);
 
-                    marcarEnviado(id, woo.id, woo.permalink);
+                    marcarEnviado(id, woo.id, woo.permalink, dados.avisoCro);
                     enviados++;
 
                     // Exibe tudo junto (dados + resultado do envio)
