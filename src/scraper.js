@@ -250,6 +250,20 @@ async function scrapePage(browser, url, produtoNumero) {
                 }
             }
 
+            const categorias = [];
+            const breadcrumbLinks = $$('nav[class*="Breadcrumb_breadcrumb"] ol.breadcrumb li.breadcrumb-item a');
+            breadcrumbLinks.forEach((a) => {
+                const text = a.textContent?.trim();
+                const href = a.getAttribute('href');
+                if (text && 
+                    text.toLowerCase() !== 'home' && 
+                    text.toLowerCase() !== 'início' && 
+                    text.toLowerCase() !== 'inicio' &&
+                    href !== '/') {
+                    categorias.push(text);
+                }
+            });
+
             return {
                 produtoNumero: prodNum,
                 url: window.location.href,
@@ -264,7 +278,8 @@ async function scrapePage(browser, url, produtoNumero) {
                 imageDetails: images,
                 descricao: descricaoHtml,
                 tipo: withFallback(tipo, 'simples'),
-                variantes: variantes
+                variantes: variantes,
+                categorias: categorias
             };
         }, produtoNumero);
 
@@ -293,34 +308,48 @@ async function scrapePage(browser, url, produtoNumero) {
     }
 }
 
-function printResults(result) {
-    console.log('═══════════════════════════════════════════════════════');
-    console.log(`PRODUTO ${result.produtoNumero}`);
-    console.log(`URL: ${result.url}`);
+function formatResults(result, wooResult = null) {
+    let output = '';
+    output += '═══════════════════════════════════════════════════════\n';
+    output += `PRODUTO ${result.produtoNumero}\n`;
+    output += `URL: ${result.url}\n`;
 
     if (result.error) {
-        console.log(`ERRO: ${result.error}`);
+        output += `❌ ERRO SCRAPING: ${result.error}\n`;
     } else {
-        console.log(`Nome: ${result.nome}`);
-        console.log(`Embalagem: ${result.embalagem}`);
-        console.log(`Tipo: ${result.tipo === 'composto' ? `COMPOSTO (${result.variantes.length} variantes)` : 'SIMPLES'}`);
-        console.log(`Codigo: ${result.codigo}`);
-        console.log(`Preco a vista: ${result.precoVista}`);
-        console.log(`Preco parcelado: ${result.precoParcelado}`);
-        console.log(`Estoque max: ${result.estoqueMax}`);
-        console.log(`Status: ${result.status}`);
-        console.log(`Imagens: ${result.imagens.length}`);
+        output += `Nome: ${result.nome}\n`;
+        output += `Embalagem: ${result.embalagem}\n`;
+        output += `Tipo: ${result.tipo === 'composto' ? `COMPOSTO (${result.variantes.length} variantes)` : 'SIMPLES'}\n`;
+        output += `Codigo: ${result.codigo}\n`;
+        output += `Preco a vista: ${result.precoVista}\n`;
+        output += `Preco parcelado: ${result.precoParcelado}\n`;
+        output += `Estoque max: ${result.estoqueMax}\n`;
+        output += `Status: ${result.status}\n`;
+        output += `Imagens: ${result.imagens.length}\n`;
+        output += `Categorias: ${result.categorias.join(' > ') || 'Nenhuma'}\n`;
 
         if (result.tipo === 'composto' && result.variantes.length > 0) {
-            console.log('\n--- Variantes ---');
+            output += '\n--- Variantes ---\n';
             result.variantes.slice(0, 5).forEach((v, i) => {
-                console.log(`  ${i + 1}. nome="${v.nome}" codigo="${v.codigo}" preco="${v.preco}" estoque=${v.estoqueMax}`);
+                output += `  ${i + 1}. nome="${v.nome}" codigo="${v.codigo}" preco="${v.preco}" estoque=${v.estoqueMax}\n`;
             });
             if (result.variantes.length > 5) {
-                console.log(`  ... e mais ${result.variantes.length - 5} variantes`);
+                output += `  ... e mais ${result.variantes.length - 5} variantes\n`;
+            }
+        }
+
+        if (wooResult) {
+            if (wooResult.error) {
+                output += `\n❌ ERRO WOOCOMMERCE: ${wooResult.error}\n`;
+            } else {
+                output += `\n✅ Produto salvo!\n`;
+                output += `🆔 ID WooCommerce: ${wooResult.id}\n`;
+                output += `🔗 Link: ${wooResult.permalink}\n`;
             }
         }
     }
+    output += '═══════════════════════════════════════════════════════\n';
+    return output;
 }
 
 require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
@@ -391,21 +420,23 @@ async function main() {
                 if (dados.error) {
                     marcarErro(id, `SCRAPING: ${dados.error}`);
                     erros++;
-                    console.log(`${progresso} ❌ Erro no scraping: ${dados.error}`);
+                    console.log(formatResults(dados));
                     return;
                 }
 
-                printResults(dados);
-
                 // ── Etapa 2: Envio ao WooCommerce ──
                 try {
-                    console.log(`${progresso} 📤 ${DRY_RUN ? '[DRY RUN]' : ''} Enviando ao WooCommerce...`);
                     const woo = await enviarProduto(dados);
 
                     marcarEnviado(id, woo.id, woo.permalink);
                     enviados++;
 
-                    console.log(`${progresso} ✅ Produto salvo! ID: ${woo.id}`);
+                    // Exibe tudo junto (dados + resultado do envio)
+                    console.log(formatResults(dados, { 
+                        id: woo.id, 
+                        permalink: woo.permalink 
+                    }));
+
                 } catch (errWoo) {
                     const msg = errWoo.response
                         ? `WOO API ${errWoo.response.status}: ${JSON.stringify(errWoo.response.data)}`
@@ -413,7 +444,8 @@ async function main() {
 
                     marcarErro(id, msg);
                     erros++;
-                    console.log(`${progresso} ❌ Erro no envio: ${msg}`);
+                    
+                    console.log(formatResults(dados, { error: msg }));
                 }
             });
 

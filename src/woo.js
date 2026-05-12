@@ -29,6 +29,8 @@ const api = axios.create({
     headers: { 'Content-Type': 'application/json' },
     timeout: 30000
 });
+// Cache de categorias para evitar requisições repetidas
+const categoryCache = {};
 
 // ─────────────────────────────────────────────
 // Funções auxiliares
@@ -73,6 +75,74 @@ function montarImagens(imagensUrls) {
         }));
 }
 
+/**
+ * Garante que as categorias existam no WooCommerce e retorna seus IDs.
+ * Suporta hierarquia baseada na ordem do array.
+ */
+async function obterOuCriarCategorias(nomes) {
+    if (!nomes || nomes.length === 0) return [];
+
+    const ids = [];
+    let lastParentId = 0;
+
+    for (const nome of nomes) {
+        const cacheKey = `${lastParentId}:${nome.toLowerCase()}`;
+        
+        if (categoryCache[cacheKey]) {
+            lastParentId = categoryCache[cacheKey];
+            ids.push({ id: lastParentId });
+            continue;
+        }
+
+        if (DRY_RUN) {
+            // No modo simulação, gera um ID fictício
+            lastParentId = Math.floor(Math.random() * 1000) + 500;
+            categoryCache[cacheKey] = lastParentId;
+            ids.push({ id: lastParentId });
+            continue;
+        }
+
+        try {
+            // 1. Tenta buscar a categoria pelo nome e pai
+            const resp = await api.get('/products/categories', {
+                params: { per_page: 100, parent: lastParentId }
+            });
+
+            const existente = resp.data.find(c => c.name.trim().toLowerCase() === nome.toLowerCase());
+
+            if (existente) {
+                lastParentId = existente.id;
+            } else {
+                // 2. Se não existir, tenta criar
+                try {
+                    const createResp = await api.post('/products/categories', {
+                        name: nome,
+                        parent: lastParentId
+                    });
+                    lastParentId = createResp.data.id;
+                } catch (createErr) {
+                    // Caso ocorra erro de concorrência (já criado por outra tarefa simultânea)
+                    if (createErr.response && createErr.response.data && createErr.response.data.code === 'term_exists') {
+                        lastParentId = createErr.response.data.data.resource_id;
+                    } else {
+                        throw createErr;
+                    }
+                }
+            }
+
+            categoryCache[cacheKey] = lastParentId;
+            ids.push({ id: lastParentId });
+
+        } catch (err) {
+            const msg = err.response ? JSON.stringify(err.response.data) : err.message;
+            console.warn(`    ⚠️  Aviso: Falha ao processar categoria "${nome}": ${msg}`);
+            // Em caso de erro, continua sem essa categoria ou tenta a próxima
+        }
+    }
+
+    return ids;
+}
+
 // ─────────────────────────────────────────────
 // Envio de produto SIMPLES
 // ─────────────────────────────────────────────
@@ -81,6 +151,9 @@ async function enviarSimples(dados) {
     const preco  = parsePreco(dados.precoVista);
     const sku    = parseCodigo(dados.codigo);
     const imagens= montarImagens(dados.imagens || []);
+    
+    // Processa categorias
+    const categoriasIds = await obterOuCriarCategorias(dados.categorias);
 
     const payload = {
         name:               dados.nome,
@@ -92,7 +165,8 @@ async function enviarSimples(dados) {
         short_description:  dados.embalagem   !== 'indisponivel' ? dados.embalagem   : '',
         manage_stock:       dados.estoqueMax  > 0,
         stock_quantity:     dados.estoqueMax  > 0 ? dados.estoqueMax : null,
-        images:             imagens
+        images:             imagens,
+        categories:         categoriasIds
     };
 
     if (DRY_RUN) {
@@ -111,6 +185,9 @@ async function enviarComposto(dados) {
     const imagens = montarImagens(dados.imagens || []);
     const sku     = parseCodigo(dados.codigo);
 
+    // Processa categorias
+    const categoriasIds = await obterOuCriarCategorias(dados.categorias);
+
     // 1. Cria o produto pai com tipo "variable"
     const payloadPai = {
         name:               dados.nome,
@@ -120,6 +197,7 @@ async function enviarComposto(dados) {
         description:        dados.descricao  !== 'indisponivel' ? dados.descricao  : '',
         short_description:  dados.embalagem  !== 'indisponivel' ? dados.embalagem  : '',
         images:             imagens,
+        categories:         categoriasIds,
         attributes: [{
             name:    'Variante',
             visible: true,
@@ -194,6 +272,7 @@ function simularEnvio(tipo, payload) {
     if (payload.type === 'variable') {
         console.log(`    [DRY RUN] Atributos: ${payload.attributes?.[0]?.options?.join(', ')}`);
     }
+    console.log(`    [DRY RUN] Categorias (IDs): ${payload.categories?.map(c => c.id).join(', ') || '(nenhuma)'}`);
     return {
         id:        fakeId,
         permalink: `${WOO_URL}/?p=${fakeId}-dry-run`
