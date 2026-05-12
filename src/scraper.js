@@ -10,14 +10,10 @@ function withFallback(value, defaultValue) {
     return value;
 }
 
-async function scrapePage(url, produtoNumero) {
-    const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-
+async function scrapePage(browser, url, produtoNumero) {
+    let page;
     try {
-        const page = await browser.newPage();
+        page = await browser.newPage();
         await page.setViewport({ width: 1280, height: 800 });
 
         await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
@@ -272,11 +268,11 @@ async function scrapePage(url, produtoNumero) {
             };
         }, produtoNumero);
 
-        await browser.close();
+        await page.close();
         return result;
 
     } catch (error) {
-        await browser.close();
+        if (page) await page.close();
         return {
             produtoNumero,
             url,
@@ -365,53 +361,73 @@ async function main() {
     let enviados  = 0;
     let erros     = 0;
 
-    for (let i = 0; i < pendentes.length; i++) {
-        const registro = pendentes[i];
-        const { id, url } = registro;
-        const progresso   = `[${i + 1}/${pendentes.length}]`;
+    const CONCURRENCIA = parseInt(process.env.CONCURRENCIA || '1', 10);
+    console.log(`  ⚡ Concorrência: ${CONCURRENCIA} processamentos simultâneos`);
+    console.log('');
 
-        console.log(`${progresso} Processando: ${url}`);
+    // Inicia o navegador UMA vez
+    const browser = await puppeteer.launch({
+        headless: true,
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
 
-        // Marca como "em andamento" no banco
-        marcarScraping(id);
+    try {
+        // Processa em lotes (chunks) de tamanho CONCURRENCIA
+        for (let i = 0; i < pendentes.length; i += CONCURRENCIA) {
+            const lote = pendentes.slice(i, i + CONCURRENCIA);
+            const lotePromises = lote.map(async (registro, indexNoLote) => {
+                const idReal = i + indexNoLote + 1;
+                const { id, url } = registro;
+                const progresso = `[${idReal}/${pendentes.length}]`;
 
-        // ── Etapa 1: Scraping ──
-        const dados = await scrapePage(url, i + 1);
-        printResults(dados);
+                console.log(`${progresso} Iniciando: ${url}`);
 
-        if (dados.error) {
-            marcarErro(id, `SCRAPING: ${dados.error}`);
-            erros++;
-            console.log(`  ❌ Erro no scraping: ${dados.error}`);
-            await new Promise(r => setTimeout(r, 1000));
-            continue;
+                // Marca como "em andamento" no banco
+                marcarScraping(id);
+
+                // ── Etapa 1: Scraping ──
+                const dados = await scrapePage(browser, url, idReal);
+
+                if (dados.error) {
+                    marcarErro(id, `SCRAPING: ${dados.error}`);
+                    erros++;
+                    console.log(`${progresso} ❌ Erro no scraping: ${dados.error}`);
+                    return;
+                }
+
+                printResults(dados);
+
+                // ── Etapa 2: Envio ao WooCommerce ──
+                try {
+                    console.log(`${progresso} 📤 ${DRY_RUN ? '[DRY RUN]' : ''} Enviando ao WooCommerce...`);
+                    const woo = await enviarProduto(dados);
+
+                    marcarEnviado(id, woo.id, woo.permalink);
+                    enviados++;
+
+                    console.log(`${progresso} ✅ Produto salvo! ID: ${woo.id}`);
+                } catch (errWoo) {
+                    const msg = errWoo.response
+                        ? `WOO API ${errWoo.response.status}: ${JSON.stringify(errWoo.response.data)}`
+                        : `WOO: ${errWoo.message}`;
+
+                    marcarErro(id, msg);
+                    erros++;
+                    console.log(`${progresso} ❌ Erro no envio: ${msg}`);
+                }
+            });
+
+            // Aguarda o lote atual terminar antes de seguir para o próximo
+            await Promise.all(lotePromises);
+
+            // Pequena pausa entre lotes para não sufocar o banco/API
+            if (i + CONCURRENCIA < pendentes.length) {
+                console.log(`\n  --- Aguardando 2s para o próximo lote ---\n`);
+                await new Promise(r => setTimeout(r, 2000));
+            }
         }
-
-        // ── Etapa 2: Envio ao WooCommerce ──
-        try {
-            console.log(`  📤 ${DRY_RUN ? '[DRY RUN]' : ''} Enviando ao WooCommerce...`);
-            const woo = await enviarProduto(dados);
-
-            marcarEnviado(id, woo.id, woo.permalink);
-            enviados++;
-
-            console.log(`  ✅ Produto salvo!`);
-            console.log(`  🆔 ID WooCommerce: ${woo.id}`);
-            console.log(`  🔗 Link: ${woo.permalink}`);
-
-        } catch (errWoo) {
-            const msg = errWoo.response
-                ? `WOO API ${errWoo.response.status}: ${JSON.stringify(errWoo.response.data)}`
-                : `WOO: ${errWoo.message}`;
-
-            marcarErro(id, msg);
-            erros++;
-            console.log(`  ❌ Erro no envio: ${msg}`);
-        }
-
-        console.log('');
-        // Pausa entre requisições para não sobrecarregar
-        await new Promise(r => setTimeout(r, 1500));
+    } finally {
+        await browser.close();
     }
 
     // ── Resumo final ──
